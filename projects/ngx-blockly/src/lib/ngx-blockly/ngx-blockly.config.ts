@@ -1,4 +1,5 @@
 import { BlocklyOptions } from 'blockly';
 
-export class NgxBlocklyConfig implements BlocklyOptions {
+export interface NgxBlocklyConfig extends BlocklyOptions {
+    language?: string;
 }

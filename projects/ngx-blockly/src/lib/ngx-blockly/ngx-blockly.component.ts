@@ -1,15 +1,26 @@
-import { AfterViewInit, Component, EventEmitter, HostListener, Input, OnInit, Output } from '@angular/core';
+import {
+    AfterViewInit,
+    Component,
+    EventEmitter,
+    HostListener,
+    Input,
+    OnChanges,
+    OnInit,
+    Output,
+    SimpleChange
+} from '@angular/core';
 import { NgxBlocklyConfig } from './ngx-blockly.config';
 import { NgxBlocklyGeneratorConfig } from './ngx-blockly-generator.config';
 import { CustomBlock } from './models/custom-block';
 import * as Blockly from 'blockly/core';
 import 'blockly/blocks';
-import 'blockly/php';
 import 'blockly/python';
-import 'blockly/javascript';
 import 'blockly/lua';
+import 'blockly/javascript';
 import 'blockly/dart';
-import { Workspace } from 'blockly';
+import * as EN from 'blockly/msg/en';
+import * as FR from 'blockly/msg/fr';
+import { WorkspaceSvg } from 'blockly';
 
 
 @Component({
@@ -17,7 +28,7 @@ import { Workspace } from 'blockly';
     templateUrl: './ngx-blockly.component.html',
     styleUrls: ['./ngx-blockly.component.css']
 })
-export class NgxBlocklyComponent implements OnInit, AfterViewInit {
+export class NgxBlocklyComponent implements OnInit, AfterViewInit, OnChanges {
 
     @Input() public config: NgxBlocklyConfig = {};
     @Input() public generatorConfig: NgxBlocklyGeneratorConfig = {};
@@ -30,12 +41,13 @@ export class NgxBlocklyComponent implements OnInit, AfterViewInit {
     @Output() public pythonCode: EventEmitter<string> = new EventEmitter<string>();
     @Output() public xmlCode: EventEmitter<string> = new EventEmitter<string>();
 
-    public workspace: Workspace;
+    public workspace: WorkspaceSvg;
 
     constructor() {
     }
 
     ngOnInit(): void {
+        Blockly.setLocale(EN);
         if (this.customBlocks) {
             for (const customBlock of this.customBlocks) {
                 Blockly.Blocks[customBlock.type] = {
@@ -49,7 +61,7 @@ export class NgxBlocklyComponent implements OnInit, AfterViewInit {
                     }
                 };
                 if (typeof Blockly.Python !== 'undefined') {
-                    Blockly.Python[customBlock.type] = function (b) {
+                    Blockly.PythENon[customBlock.type] = function (b) {
                         return b.blockInstance.toPythonCode(b);
                     };
                 }
@@ -83,20 +95,21 @@ export class NgxBlocklyComponent implements OnInit, AfterViewInit {
                         }
                     };
                     if (customBlock.blockMutator.blockList && customBlock.blockMutator.blockList.length > 0) {
-                        mutator_mixin.decompose = function (workspace: any) {
+                        mutator_mixin.decompose = function(workspace: any) {
                             return customBlock.blockMutator.decompose.call(customBlock.blockMutator, this, workspace);
                         };
-                        mutator_mixin.compose = function (topBlock: any) {
+                        mutator_mixin.compose = function(topBlock: any) {
                             customBlock.blockMutator.compose.call(customBlock.blockMutator, this, topBlock);
                         };
-                        mutator_mixin.saveConnections = function (containerBlock: any) {
+                        mutator_mixin.saveConnections = function(containerBlock: any) {
                             customBlock.blockMutator.saveConnections.call(customBlock.blockMutator, this, containerBlock);
                         };
                     }
+                    Blockly.Extensions.unregister(customBlock.blockMutator.name);
                     Blockly.Extensions.registerMutator(
                         customBlock.blockMutator.name,
                         mutator_mixin,
-                        function () {
+                        function() {
                             customBlock.blockMutator.afterBlockInit.call(customBlock.blockMutator, this);
                         },
                         customBlock.blockMutator.blockList
@@ -107,13 +120,7 @@ export class NgxBlocklyComponent implements OnInit, AfterViewInit {
     }
 
     ngAfterViewInit() {
-        if (!this.workspace) {
-            this.workspace = Blockly.inject('blockly', this.config as Blockly.BlocklyOptions);
-            this.workspace.addChangeListener(($event) => {
-                this.onWorkspaceChange($event);
-            });
-            this.resize();
-        }
+       this._init();
     }
 
     @HostListener('window:resize', ['$event'])
@@ -121,9 +128,14 @@ export class NgxBlocklyComponent implements OnInit, AfterViewInit {
         setTimeout(() => this.resize(), 200);
     }
 
+    ngOnChanges(changes: {[propKey: string]: SimpleChange}) {
+        if (changes.config && !changes.config.firstChange) {
+            this._init();
+        }
+    }
     public workspaceToCode(workspaceId: string) {
         if (this.generatorConfig.dart) {
-            this.dartCode.emit(Blockly.Dart.workspaceToCode(Blockly.Workspace.getById(workspaceId)));
+           this.dartCode.emit(Blockly.Dart.workspaceToCode(Blockly.Workspace.getById(workspaceId)));
         }
         if (this.generatorConfig.javascript) {
             this.javascriptCode.emit(Blockly.JavaScript.workspaceToCode(Blockly.Workspace.getById(workspaceId)));
@@ -156,12 +168,26 @@ export class NgxBlocklyComponent implements OnInit, AfterViewInit {
 
     protected resize() {
         Blockly.svgResize(this.workspace);
-
     }
 
-    private onWorkspaceChange($event: any) {
+    private _init() {
+        let xml: string;
+        if (this.workspace) {
+            xml = this.toXml();
+            this.workspace.dispose();
+        }
+        this.workspace = Blockly.inject('blockly', this.config);
+        this.workspace.addChangeListener(($event) => {
+            this._onWorkspaceChange($event);
+        });
+        if (xml) {
+            this.fromXml(xml);
+        }
+        this.resize();
+    }
+
+    private _onWorkspaceChange($event: any) {
         this.workspaceChange.emit($event);
         this.workspaceToCode($event.workspaceId);
     }
-
 }
